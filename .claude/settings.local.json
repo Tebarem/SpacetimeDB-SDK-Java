@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:spacetimedb.com)",
+      "WebSearch",
+      "Bash(cd \"C:\\\\Users\\\\Ahmed\\\\SpacetimeDB-SDK-Java\" && mvn compile -q 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\Ahmed\\\\SpacetimeDB-SDK-Java\" && mvn compile 2>&1 | tail -5)",
+      "Bash(cd \"C:/Users/Ahmed/SpacetimeDB-SDK-Java\" && mvn test 2>&1)"
+    ]
+  }
+}

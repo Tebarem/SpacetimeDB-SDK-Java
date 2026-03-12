@@ -1,5 +1,6 @@
 package eu.jlavocat.spacetimedb.messages.server;
 
+import java.util.List;
 import java.util.Optional;
 
 import eu.jlavocat.spacetimedb.bsatn.BsatnReader;
@@ -10,9 +11,11 @@ import eu.jlavocat.spacetimedb.bsatn.Timestamp;
 
 public sealed interface ServerMessage
         permits ServerMessage.IdentityTokenMessage, ServerMessage.TransactionUpdateMessage,
+        ServerMessage.TransactionUpdateLightMessage,
         ServerMessage.SubscriptionErrorMessage, ServerMessage.SubscribeMultiAppliedMessage {
 
     static final byte TRANSACTION_UPDATE_MESSAGE = 1;
+    static final byte TRANSACTION_UPDATE_LIGHT_MESSAGE = 2;
     static final byte IDENTITY_TOKEN_MESSAGE = 3;
     static final byte SUBSCRIPTION_ERROR_MESSAGE = 7;
     static final byte SUBSCRIBE_MULTI_APPLIED_MESSAGE = 8;
@@ -44,16 +47,22 @@ public sealed interface ServerMessage
     record SubscribeMultiAppliedMessage(SubscribeMultiApplied payload) implements ServerMessage {
     }
 
+    record TransactionUpdateLightMessage(DatabaseUpdate update) implements ServerMessage {
+    }
+
     public static ServerMessage fromBsatn(BsatnReader reader) {
         byte serverMsgType = reader.readByte();
-        System.out.println("Server message type: " + serverMsgType);
 
         return switch (serverMsgType) {
             case IDENTITY_TOKEN_MESSAGE -> decodeIdentityTokenMessage(reader);
             case TRANSACTION_UPDATE_MESSAGE -> decodeTransactionUpdateMessage(reader);
+            case TRANSACTION_UPDATE_LIGHT_MESSAGE -> decodeTransactionUpdateLightMessage(reader);
             case SUBSCRIPTION_ERROR_MESSAGE -> decodeSubscriptionErrorMessage(reader);
             case SUBSCRIBE_MULTI_APPLIED_MESSAGE -> decodeSubscribeMultiApplied(reader);
-            default -> throw new IllegalStateException("Unknown server message type: " + serverMsgType);
+            default -> {
+                System.err.println("[SpacetimeDB] Unknown server message type: " + serverMsgType + " — ignoring");
+                yield null;
+            }
         };
     }
 
@@ -95,6 +104,14 @@ public sealed interface ServerMessage
                 error);
 
         return new ServerMessage.SubscriptionErrorMessage(payload);
+    }
+
+    private static ServerMessage.TransactionUpdateLightMessage decodeTransactionUpdateLightMessage(BsatnReader reader) {
+        UpdateStatus status = UpdateStatus.fromBsatn(reader);
+        DatabaseUpdate update = status instanceof UpdateStatus.Committed c
+                ? c.update()
+                : new DatabaseUpdate(List.of());
+        return new ServerMessage.TransactionUpdateLightMessage(update);
     }
 
     private static ServerMessage decodeSubscribeMultiApplied(BsatnReader reader) {

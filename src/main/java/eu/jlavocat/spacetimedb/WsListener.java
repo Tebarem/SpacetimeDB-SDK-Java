@@ -11,21 +11,30 @@ import java.util.function.Consumer;
 import eu.jlavocat.spacetimedb.bsatn.BsatnReader;
 import eu.jlavocat.spacetimedb.events.OnConnectedEvent;
 import eu.jlavocat.spacetimedb.events.OnDisconnectedEvent;
+import eu.jlavocat.spacetimedb.messages.server.DatabaseUpdate;
 import eu.jlavocat.spacetimedb.messages.server.IdentityToken;
 import eu.jlavocat.spacetimedb.messages.server.ServerMessage;
+import eu.jlavocat.spacetimedb.messages.server.UpdateStatus;
 
 public final class WsListener implements WebSocket.Listener {
     private final Optional<Consumer<OnConnectedEvent>> onConnect;
     private final Optional<Consumer<OnDisconnectedEvent>> onDisconnect;
     private final Consumer<IdentityToken> onIdentityToken;
+    private final Consumer<DatabaseUpdate> onDatabaseUpdate;
+    private final Optional<Runnable> reconnectCallback;
 
     private ByteArrayOutputStream fragmentedMessageBuffer = null;
 
     public WsListener(Optional<Consumer<OnConnectedEvent>> onConnect,
-            Optional<Consumer<OnDisconnectedEvent>> onDisconnect, Consumer<IdentityToken> onIdentityToken) {
+            Optional<Consumer<OnDisconnectedEvent>> onDisconnect,
+            Consumer<IdentityToken> onIdentityToken,
+            Consumer<DatabaseUpdate> onDatabaseUpdate,
+            Optional<Runnable> reconnectCallback) {
         this.onConnect = onConnect;
         this.onDisconnect = onDisconnect;
         this.onIdentityToken = onIdentityToken;
+        this.onDatabaseUpdate = onDatabaseUpdate;
+        this.reconnectCallback = reconnectCallback;
     }
 
     @Override
@@ -45,12 +54,6 @@ public final class WsListener implements WebSocket.Listener {
 
         try {
             BsatnReader reader = new BsatnReader(data);
-            System.out.println("Received binary message with " + reader.remaining() + " bytes, last=" + last);
-
-            if (!last) {
-                webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "Fragmented messages not supported");
-                return CompletableFuture.completedStage(null);
-            }
 
             byte compressionAlgo = reader.readByte();
             if (compressionAlgo != 0) {
@@ -59,6 +62,11 @@ public final class WsListener implements WebSocket.Listener {
             }
 
             var message = ServerMessage.fromBsatn(reader);
+            if (message == null) {
+                webSocket.request(1);
+                return CompletableFuture.completedStage(null);
+            }
+
             if (reader.remaining() != 0) {
                 throw new IllegalStateException(
                         "BSATN decode error: message not fully consumed, " + reader.remaining() + " bytes remaining");
@@ -71,15 +79,19 @@ public final class WsListener implements WebSocket.Listener {
                     onConnect.ifPresent(consumer -> consumer.accept(event));
                 }
                 case ServerMessage.TransactionUpdateMessage msg -> {
-                    System.out.println("Received TransactionUpdateMessage " + msg);
+                    if (msg.payload().status() instanceof UpdateStatus.Committed c) {
+                        onDatabaseUpdate.accept(c.update());
+                    }
+                }
+                case ServerMessage.TransactionUpdateLightMessage msg -> {
+                    onDatabaseUpdate.accept(msg.update());
                 }
                 case ServerMessage.SubscriptionErrorMessage msg -> {
-                    System.out.println("Received SubscriptionErrorMessage " + msg);
+                    System.err.println("Received SubscriptionErrorMessage " + msg);
                 }
                 case ServerMessage.SubscribeMultiAppliedMessage msg -> {
-                    System.out.println("Received SubscribeMultiAppliedMessage " + msg);
+                    onDatabaseUpdate.accept(msg.payload().update());
                 }
-                default -> throw new IllegalStateException("Unexpected message type: " + message.getClass().getName());
             }
 
             return CompletableFuture.completedStage(null);
@@ -102,13 +114,16 @@ public final class WsListener implements WebSocket.Listener {
     public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
         OnDisconnectedEvent event = new OnDisconnectedEvent(statusCode, reason);
         onDisconnect.ifPresent(consumer -> consumer.accept(event));
+        if (statusCode != WebSocket.NORMAL_CLOSURE) {
+            reconnectCallback.ifPresent(Runnable::run);
+        }
         return CompletableFuture.completedStage(null);
     }
 
     @Override
     public void onError(WebSocket webSocket, Throwable error) {
-        System.err.println("WebSocket error: " + error.getMessage());
-        error.printStackTrace();
+        System.err.println("[SpacetimeDB] WebSocket error: " + error.getMessage());
+        reconnectCallback.ifPresent(Runnable::run);
     }
 
     private Optional<ByteBuffer> accumulateBinaryMessage(ByteBuffer data, boolean last) {

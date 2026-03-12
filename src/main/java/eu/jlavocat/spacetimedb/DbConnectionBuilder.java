@@ -6,12 +6,16 @@ import java.util.function.Consumer;
 
 import eu.jlavocat.spacetimedb.events.OnConnectedEvent;
 import eu.jlavocat.spacetimedb.events.OnDisconnectedEvent;
+import eu.jlavocat.spacetimedb.schema.ModuleSchema;
+import eu.jlavocat.spacetimedb.schema.SchemaFetcher;
 
 public class DbConnectionBuilder {
 
     private String uri = "http://localhost:3000";
     private String moduleName = "";
     private String token = "";
+    private boolean fetchSchema = false;
+    private boolean autoReconnect = false;
 
     private Optional<Consumer<OnConnectedEvent>> onConnect = Optional.empty();
     private Optional<Consumer<OnDisconnectedEvent>> onDisconnect = Optional.empty();
@@ -31,6 +35,11 @@ public class DbConnectionBuilder {
         return this;
     }
 
+    public DbConnectionBuilder withSchemaFetch(boolean fetchSchema) {
+        this.fetchSchema = fetchSchema;
+        return this;
+    }
+
     public DbConnectionBuilder onConnect(Consumer<OnConnectedEvent> onConnect) {
         this.onConnect = Optional.of(onConnect);
         return this;
@@ -38,6 +47,11 @@ public class DbConnectionBuilder {
 
     public DbConnectionBuilder onDisconnect(Consumer<OnDisconnectedEvent> onDisconnect) {
         this.onDisconnect = Optional.of(onDisconnect);
+        return this;
+    }
+
+    public DbConnectionBuilder withAutoReconnect(boolean autoReconnect) {
+        this.autoReconnect = autoReconnect;
         return this;
     }
 
@@ -50,7 +64,9 @@ public class DbConnectionBuilder {
             throw new IllegalArgumentException("Module name must be provided");
         }
 
-        return new DbConnectionImpl(uri, moduleName, token, onConnect, onDisconnect, false);
+        ModuleSchema schema = fetchSchema ? SchemaFetcher.fetch(uri, moduleName, token) : null;
+
+        return new DbConnectionImpl(uri, moduleName, token, onConnect, onDisconnect, false, schema, autoReconnect);
     }
 
 }

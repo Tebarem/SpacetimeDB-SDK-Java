@@ -9,7 +9,6 @@ public record DatabaseUpdate(List<TableUpdate> tables) {
 
     public static DatabaseUpdate fromBsatn(BsatnReader reader) {
         int size = reader.readArrayLength();
-        System.out.println("DatabaseUpdate tables count: " + size);
         ArrayList<TableUpdate> tables = new ArrayList<>();
         for (int i = 0; i < size; i++) {
             TableUpdate tableUpdate = TableUpdate.fromBsatn(reader);

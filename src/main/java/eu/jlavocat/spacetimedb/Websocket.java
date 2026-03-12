@@ -18,7 +18,9 @@ public class Websocket {
 
     public Websocket(String uri, String moduleName, String token, Consumer<IdentityToken> onIdentityToken,
             Optional<Consumer<OnConnectedEvent>> onConnect,
-            Optional<Consumer<OnDisconnectedEvent>> onDisconnect) {
+            Optional<Consumer<OnDisconnectedEvent>> onDisconnect,
+            java.util.function.Consumer<eu.jlavocat.spacetimedb.messages.server.DatabaseUpdate> onDatabaseUpdate,
+            Optional<Runnable> reconnectCallback) {
         String fullUri = String.format("%s/v1/database/%s/subscribe?compression=None", uri, moduleName).replace("http",
                 "ws");
         URI wsUri = URI.create(fullUri);
@@ -31,7 +33,8 @@ public class Websocket {
         }
 
         this.webSocket = webSocketBuilder
-                .buildAsync(wsUri, new WsListener(onConnect, onDisconnect, onIdentityToken))
+                .buildAsync(wsUri, new WsListener(onConnect, onDisconnect, onIdentityToken, onDatabaseUpdate,
+                        reconnectCallback))
                 .join();
     }
 

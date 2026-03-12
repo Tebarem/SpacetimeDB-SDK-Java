@@ -12,8 +12,6 @@ public record TableUpdate(long tableId, String tableName, long numRows, List<Que
         String tableName = reader.readString();
         long numRows = reader.readU64();
         int updatesCount = reader.readArrayLength();
-        System.out.println("TableUpdate: tableId=" + tableId + ", tableName=" + tableName + ", numRows=" + numRows
-                + ", updatesCount=" + updatesCount);
 
         List<QueryUpdate> updates = new ArrayList<>();
         for (int i = 0; i < updatesCount; i++) {
